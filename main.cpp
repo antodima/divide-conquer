@@ -81,22 +81,29 @@ int main(int argc, char const *argv[]) {
         mutex mtx;
 
         vector<thread> workers;
+        vector<future<int> > futures;
+
         start = high_resolution_clock::now();
         vector<vector<int> > chunks = get_chunks(input, nw);
         for (vector<int> chunk : chunks) {
-                workers.push_back(thread([&](vector<int> c) {
+                std::promise<int> promise;
+                futures.push_back(promise.get_future());
+                workers.push_back(thread([&](vector<int> c, std::promise<int> &&p) {
                         vector<int> res = dc<vector<int>, vector<int> >(c, *basecase, *solve, *divide, *conquer);
                         int sum = std::accumulate(res.begin(), res.end(), 0);
-                        {
-                                unique_lock<mutex> l(mtx);
-                                cout<<"Chunk: ";
-                                for (int e : c) cout<<e<<" ";
-                                cout<<" - Partial sum = "<<sum<<endl;
-                        }
-                }, chunk));
+                        p.set_value(sum);
+                        // {
+                        //         unique_lock<mutex> l(mtx);
+                        //         cout<<"Chunk: ";
+                        //         for (int e : c) cout<<e<<" ";
+                        //         cout<<" - Partial sum = "<<sum<<endl;
+                        // }
+                }, chunk, move(promise)));
         }
         for (thread &t : workers) t.join();
+        int sum = 0; for (future<int> &f : futures) { int n = f.get(); sum += n; }
         auto duration_par = duration_cast<microseconds>(high_resolution_clock::now() - start);
+        cout<<"Parallel sum = "<<sum<<endl;
         cout<<"Parallel time: "<<duration_par.count()<<" usec"<<endl;
 
         return 0;
